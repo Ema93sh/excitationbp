@@ -16,15 +16,15 @@ def trainable_modules(orig, flat=None, param_only=True):
             return flat + [orig]
     return flat
 
-def excitation_backprop(model, inputs, prob_outputs, contrastive=False, target_layer=0):
+def excitation_backprop(model, inputs, prob_outputs, contrastive=False, layer_top = None, target_layer=0):
     inputs = Variable(inputs.data) # assure that 'inputs' is a leaf variable
     inputs.requires_grad = True # assure that gradients will end up on this leaf variable
     torch.use_pos_weights = True
-    
+
     # get internal variables of the model
-    layer_top = trainable_modules(model)[-1]
+    layer_top = trainable_modules(model)[-1] if layer_top is None else layer_top
     layer_target = trainable_modules(model)[target_layer]
-    
+
     global top_h_, contr_h_, target_h_
     top_h_, contr_h_, target_h_ = None, None, None
 
@@ -35,7 +35,7 @@ def excitation_backprop(model, inputs, prob_outputs, contrastive=False, target_l
     h1 = layer_top.register_forward_hook(hook_top_h)
     h2 = layer_top.register_forward_hook(hook_contr_h)
     h3 = layer_target.register_forward_hook(hook_target_h)
-    
+
     _ = model(inputs)
     h1.remove() ; h2.remove() ; h3.remove()
 
@@ -43,11 +43,11 @@ def excitation_backprop(model, inputs, prob_outputs, contrastive=False, target_l
     if not contrastive:
         outputs = model(inputs)
         return torch.autograd.grad(top_h_, target_h_, grad_outputs=prob_outputs)[0]
-    
+
     pos_evidence = torch.autograd.grad(top_h_, contr_h_, grad_outputs=prob_outputs.clone())[0]
     torch.use_pos_weights = False
     neg_evidence = torch.autograd.grad(top_h_, contr_h_, grad_outputs=prob_outputs.clone())[0]
-    
+
     torch.use_pos_weights = True
     contrastive_signal = pos_evidence - neg_evidence
     return torch.autograd.grad(contr_h_, target_h_, grad_outputs=contrastive_signal)[0]
